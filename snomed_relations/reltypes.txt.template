@@ -1,0 +1,65 @@
+116676008	Associated morphology (attribute)	0.6
+116680003	Is a (attribute)	1.0
+116686009	Has specimen (attribute)	0.6
+118168003	Specimen source morphology (attribute)	0.6
+118169006	Specimen source topography (attribute)	0.6
+118170007	Specimen source identity (attribute)	0.6
+118171006	Specimen procedure (attribute)	0.6
+123005000	Part of (attribute)	0.8
+127489000	Has active ingredient (attribute)	1.0
+149016008	MAY BE A (attribute)	0.6
+159083000	WAS A (attribute)	0.8
+168666000	SAME AS (attribute)	1.0
+246075003	Causative agent (attribute)	1.0
+246090004	Associated finding (attribute)	0.6
+246093002	Component (attribute)	0.8
+246112005	Severity (attribute)	0.2
+246454002	Occurrence (attribute)	0.6
+246456000	Episodicity (attribute)	0.6
+246513007	Revision status (attribute)	0.2
+255234002	After (attribute)	0.4
+260507000	Access (attribute)	0.4
+260686004	Method (attribute)	0.4
+260870009	Priority (attribute)	0.2
+263502005	Clinical course (attribute)	0.8
+272741003	Laterality (attribute)	0.2
+363589002	Associated procedure (attribute)	0.6
+363698007	Finding site (attribute)	0.6
+363699004	Direct device (attribute)	0.8
+363700003	Direct morphology (attribute)	0.6
+363701004	Direct substance (attribute)	0.8
+363702006	Has focus (attribute)	0.4
+363703001	Has intent (attribute)	0.4
+363704007	Procedure site (attribute)	0.4
+363705008	Has definitional manifestation (attribute)	0.8
+363709002	Indirect morphology (attribute)	0.6
+363710007	Indirect device (attribute)	0.6
+363713009	Has interpretation (attribute)	0.6
+363714003	Interprets (attribute)	0.6
+370124000	REPLACED BY (attribute)	1.0
+370125004	MOVED TO (attribute)	1.0
+370129005	Measurement method (attribute)	0.4
+370130000	Property (attribute)	0.2
+370131001	Recipient category (attribute)	0.2
+370132008	Scale type (attribute)	0.2
+370133003	Specimen substance (attribute)	0.4
+370135005	Pathological process (attribute)	0.4
+405813007	Procedure site - Direct (attribute)	0.6
+405814001	Procedure site - Indirect (attribute)	0.4
+405815000	Procedure device (attribute)	0.4
+405816004	Procedure morphology (attribute)	0.4
+408729009	Finding context (attribute)	0.4
+408730004	Procedure context (attribute)	0.4
+408731000	Temporal context (attribute)	0.2
+408732007	Subject relationship context (attribute)	0.6
+410675002	Route of administration (attribute)	0.6
+411116001	Has dose form (attribute)	0.4
+418775008	Finding method (attribute)	0.4
+419066007	Finding informer (attribute)	0.2
+424226004	Using device (attribute)	0.4
+424244007	Using energy (attribute)	0.4
+424361007	Using substance (attribute)	0.4
+424876005	Surgical approach (attribute)	0.6
+425391005	Using access device (attribute)	0.6
+42752001	Due to (attribute)	0.6
+47429007	Associated with (attribute)	0.6
