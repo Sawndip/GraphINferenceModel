@@ -1,0 +1,65 @@
+<parameters>
+
+<!-----------------------------------------------------------------------------
+  BASIC SETUP
+------------------------------------------------------------------------------>
+
+  <index>/export/data/ir.indexes/medtrack/visit_level/snomed/indri-5.1/current</index>
+  <query>/Users/bevan/phd/papers/network_based_retrieval_as_inference/retrieval/params/cons-medical-topics101-185-active</query>
+  <resultCount>10000</resultCount>
+  <stopwordFile>params/stoplist.cons</stopwordFile>
+
+<!-----------------------------------------------------------------------------
+  WEIGHTING SCHEMES
+------------------------------------------------------------------------------>
+
+ <!-- INDRI-TFIDF -->
+<!--   <weightScheme>indri_tfidf</weightScheme>
+  <indri_tfidf_k1>5.2</indri_tfidf_k1>
+  <indri_tfidf_b>0.4</indri_tfidf_b> -->
+
+<!-- BM25 -->
+<!-- <weightingScheme>bm25</weightingScheme> -->
+
+<!--  LM-Dirichlet -->
+  <weightScheme>LM-Dirichlet</weightScheme>
+  <LM-Dirichlet.mu>40000</LM-Dirichlet.mu>
+
+
+<!--  LM-JM -->
+<!--   <weightScheme>LM-JM</weightScheme>
+  <LM-JM.lambda>0.9</LM-JM.lambda>
+ -->
+
+<!--  Query likelihood LM -->
+<!--   <weightScheme>qlLM</weightScheme>
+  <qlLM.mu>21000</qlLM.mu> -->
+
+
+
+
+<!-----------------------------------------------------------------------------
+  RERANKING
+------------------------------------------------------------------------------>
+
+ <!--  <rerankResultsFile>/Users/bevan/tmp/results/medtrack_all.iq.results</rerankResultsFile>
+  <rerankCount>1000</rerankCount>
+   -->
+
+
+<!-----------------------------------------------------------------------------
+  GRAPH PARAMS
+------------------------------------------------------------------------------>
+<depth>1</depth>
+<diffusionOn>1</diffusionOn>
+<diffusionMix>1</diffusionMix>
+<minDiffusionFactor>-0.3</minDiffusionFactor>
+<maxNodesVisited>-10</maxNodesVisited>
+
+<!-----------------------------------------------------------------------------
+  QUERY PRIOR PARAMS
+------------------------------------------------------------------------------>
+<metamapConfidenceOn>0</metamapConfidenceOn>
+<docRatioQueryPrior>0</docRatioQueryPrior>
+
+</parameters>
