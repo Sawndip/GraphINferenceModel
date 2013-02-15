@@ -575,6 +575,8 @@ void scoreNode(pair<Node, double> &nodePair, vector<Arc> &pathToQuery, map<DOCID
     //VLOG(2) << " toposcore: " << (*nodeToCUIMap)[node] << " " << theTopoScore << endl;
     int relevantDocCount = 0;
     int newRelevantDocCount = 0;
+
+    // master
     
     DocInfoList *docInfoList = idx->docInfoList(termId);
     docInfoList->startIteration();
