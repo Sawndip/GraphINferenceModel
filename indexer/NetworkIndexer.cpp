@@ -158,12 +158,12 @@ void progress(string msg, int count, int total, int increments)
 // gets all the related nodes and creates edges between related nodes based on relationship
 // defined in DB
 // Note: Recursive if new, non-index nodes are found
-void addEdgesToRelatedNodes(Node &node)
+void addEdgesToRelatedNodes(Node &node, bool inEdge)
 {
     VLOG(2) << "looking for edges for " << (*nodeToCUIMap)[node];
     
     // for each related concept (from UMLS)
-    vector< vector<string> > relatedConcepts = findRelatedConcepts((*nodeToCUIMap)[node]);
+    vector< vector<string> > relatedConcepts = findRelatedConceptsSQL((*nodeToCUIMap)[node], inEdge);
     VLOG(2) << "found " << relatedConcepts.size() << " edges ";
     for (vector< vector<string> >::iterator relIter = relatedConcepts.begin();
          relIter != relatedConcepts.end(); relIter++)
@@ -175,35 +175,36 @@ void addEdgesToRelatedNodes(Node &node)
         
         std::transform(relatedCUI.begin(), relatedCUI.end(), relatedCUI.begin(), ::tolower);
         
-        VLOG(2) << "lowercased" << endl;
         ListDigraph::Node relatedNode;
         
         // check whether there is aleady a node for the related concept, if not create one
         if(cuiToNodeIdMap.count(relatedCUI) == 0)
         {
-            VLOG(2) << "creating new node...";
+            VLOG(2) << "\t" << "creating new node for: " << relatedCUI << endl;
             relatedNode = g->addNode();
             cuiToNodeIdMap[relatedCUI] = g->id(relatedNode);
             (*nodeToCUIMap)[relatedNode] = relatedCUI;
             (*nodeToTopoScoreMap)[relatedNode] = idf((*nodeToCUIMap)[relatedNode]);
-            VLOG(2) << "done" << endl;
         } else
         {
-            VLOG(2) << "getting related node...";
+            VLOG(2) << "\t" << "getting related node: " << relatedCUI << endl;
             relatedNode = g->nodeFromId(cuiToNodeIdMap[relatedCUI]);
-            VLOG(2) << "done" << endl;
         }
         
         VLOG(2) << "calc df for " << (*nodeToCUIMap)[node] << " -> " << (*nodeToCUIMap)[relatedNode] << ", " << reltype;
         // calculate the weight between concept and assing to arc weight
         double sim_weight = semantic_similarity(node,relatedNode,reltype);
         VLOG(2) << sim_weight << endl;
-        VLOG(2) << "creating the arc...";
-        Arc arc = g->addArc(relatedNode, node); // reversed
+
+        Arc arc;
+        if(inEdge) {
+            arc = g->addArc(relatedNode, node);
+        } else {
+            arc = g->addArc(node, relatedNode);
+        }
+
         (*simArcs)[arc] = sim_weight;
         (*reltypeArcs)[arc] = atoi(reltype.c_str());
-        VLOG(2) << "done" << endl;
-        //(*arcWeights)[g->addArc(node, relatedNode)] = weight;
     }
     
     VLOG(2) << "finished adding edges to " << (*nodeToCUIMap)[node] << endl;
@@ -269,7 +270,8 @@ void createGraphEdges()
     {
         cout << "Building network edges:\t" << (int)((++nodeCount / (float)nodeTotal)*100) << "%\r" << flush;
         VLOG(2) << "edge " << nodeCount << " / " << nodeTotal << endl;
-        addEdgesToRelatedNodes(node);
+        addEdgesToRelatedNodes(node, true);  // rn -> n
+        //addEdgesToRelatedNodes(node, false); // n -> rn
     }
     cout << endl;
 

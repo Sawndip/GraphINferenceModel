@@ -32,15 +32,23 @@ void closeDB()
 
 // searches the sqlite DB that contains cui to cui mapping of related concepts
 // read each from sql
-vector< vector<string> > findRelatedConceptsSQL(const string &cui)
+vector< vector<string> > findRelatedConceptsSQL(const string &cui, bool inEdge)
 {
     
     std::vector< vector<string> > relatedConcepts;
     
    
     sqlite3_stmt *statement;
-//    string query = "SELECT cui2, reltype FROM crel where cui1 = '"+cui+"';";
-    string query = "SELECT cui1, reltype FROM crel where cui2 = '"+cui+"' and (relcharacteristic=0 or relcharacteristic=3);";
+
+    string query = " and (relcharacteristic=0 or relcharacteristic=3);";
+    if (inEdge) {
+        query = "SELECT cui1, reltype FROM crel where cui2 = '"+cui+"'" + query;
+    } else {
+        query = "SELECT cui2, reltype FROM crel where cui1 = '"+cui+"'" + query;     
+    }
+
+    
+    query = "SELECT cui2, reltype FROM crel where cui1 = '"+cui+"' and (relcharacteristic=0 or relcharacteristic=3);";
 
     if (sqlite3_prepare_v2(database, query.c_str(), -1, &statement, 0) == SQLITE_OK)
     {
@@ -162,11 +170,11 @@ vector<string> getAllConcepts()
 }
 
 
-// searches the sqlite DB that contains cui to cui mapping of related concepts
-vector< vector<string> > findRelatedConcepts(const string &cui)
-{
-    return findRelatedConceptsSQL(cui);
-}
+//// searches the sqlite DB that contains cui to cui mapping of related concepts
+//vector< vector<string> > findRelatedConcepts(const string &cui)
+//{
+//    return findRelatedConceptsSQL(cui);
+//}
 
 
 ///////////////////////////////////////////////////////////////////////////////
