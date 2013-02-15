@@ -42,9 +42,9 @@
   RERANKING
 ------------------------------------------------------------------------------>
 
- <!--  <rerankResultsFile>/Users/bevan/tmp/results/medtrack_all.iq.results</rerankResultsFile>
-  <rerankCount>1000</rerankCount>
-   -->
+<!--   <rerankResultsFile>/Users/bevan/phd/papers/network_based_retrieval_as_inference/retrieval/params/cons-medical-topics101-185-active.params.0.results</rerankResultsFile>
+  <rerankCount>1000</rerankCount> -->
+  
 
 
 <!-----------------------------------------------------------------------------
@@ -61,5 +61,6 @@
 ------------------------------------------------------------------------------>
 <metamapConfidenceOn>0</metamapConfidenceOn>
 <docRatioQueryPrior>0</docRatioQueryPrior>
+<arcCountQueryPrior>0</arcCountQueryPrior>
 
 </parameters>

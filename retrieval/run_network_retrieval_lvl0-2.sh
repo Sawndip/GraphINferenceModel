@@ -14,6 +14,8 @@ fi
 
 echo params: $params qrel: $qrel
 
+make
+
 for i in `seq 0 1 2`; do
 	./network_retrieval $params $i 
 	base=$(echo $params | sed 's/.params//g')

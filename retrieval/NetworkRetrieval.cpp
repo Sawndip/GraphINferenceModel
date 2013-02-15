@@ -109,6 +109,7 @@ namespace LocalParameter {
     
     int metamapConfidenceOn; // use metamap confidence score as P(Q) for P(D|Q) = P(Q|D)*P(D) / P(Q)
     int docRatioQueryPrior; // use the number of documents containg the query term as a P(Q)
+    int arcCountQueryPrior; // use the number of arc (in & out) as query prior - P(q) = |E(q)| / |E|
     
     int mapToVisitsOn; // after retrieval is complete map individual report names to visits
     string reportToVisitMappingFile; // location of the file that contains mapping of: "reportFileName.xml VisitId"
@@ -141,6 +142,7 @@ namespace LocalParameter {
         
         metamapConfidenceOn         = ParamGetInt("metamapConfidenceOn", 0);
         docRatioQueryPrior          = ParamGetInt("docRatioQueryPrior", 0);
+        arcCountQueryPrior          = ParamGetInt("arcCountQueryPrior", 0);
         
         mapToVisitsOn               = ParamGetInt("mapToVisitsOn", 0);
         reportToVisitMappingFile    = ParamGetString("reportToVisitMappingFile");
@@ -393,8 +395,6 @@ double diffusionFactor(vector<Arc> pathToQuery)
     
     if(LocalParameter::diffusionOn) {
         
-        //cout << "df is on, path is " <<  pathToQuery.size() << endl;
-        
         for (vector<Arc>::iterator it = pathToQuery.begin(); it != pathToQuery.end(); it++)
         {
             Arc arc = *it;
@@ -420,6 +420,8 @@ double diffusionFactor(vector<Arc> pathToQuery)
             
             // apply topology connecteness
             //df /= (double)edgeCount(source);
+            
+            
             
             VLOG(2) << "diffusion Factor for arc " << (*nodeToCUIMap)[source] << " -> " << (*nodeToCUIMap)[target] << ": avg(" << sim_weight << "," << reltype << "=" << rel_weight << ") =" << df;
             
@@ -529,6 +531,20 @@ bool isRelevantDoc(int queryId, DOCID_T docId) {
 ///////////////////////////////////////////////////////////////////////////////
 // Graph traversal functions
 ///////////////////////////////////////////////////////////////////////////////
+
+// count the number of edges connecting this node
+int countNodeArcs(Node &node) {
+    int edgeCount = 0;
+    
+    for (ListDigraph::OutArcIt i(*g, node); i!=INVALID; ++i)
+        edgeCount++;
+    
+    for (ListDigraph::InArcIt i(*g, node); i!=INVALID; ++i)
+        edgeCount++;
+    
+    return edgeCount;
+}
+
 
 // the visit node function - for each document found at this node score the document based on its prior and its diffusionFactor
 void scoreNode(pair<Node, double> &nodePair, vector<Arc> &pathToQuery, map<DOCID_T, double> &scores, int depth)
@@ -721,9 +737,9 @@ int traverse(pair<Node, double> &node, vector<Arc> &pathToQuery, int nodeCount, 
         nodeCount++;
         
         // follow children of this node
-        for (ListDigraph::OutArcIt arc(*g, node.first); arc != INVALID; ++arc)
+        for (ListDigraph::InArcIt arc(*g, node.first); arc != INVALID; ++arc)
         {
-            if (g->target(arc) != node.first) {
+            if (g->source(arc) != node.first) {
                 pathToQuery.push_back(arc);
                 pair<Node, double> newPair (g->source(arc), node.second);
                 
@@ -732,19 +748,21 @@ int traverse(pair<Node, double> &node, vector<Arc> &pathToQuery, int nodeCount, 
                 if(!touchNodesOnly && pathToQuery.size() <= depth) {
                     *graphViz << "\t" << (*nodeToCUIMap)[g->source(arc)] << " -> " << (*nodeToCUIMap)[g->target(arc)] << " [label=\"" << concept_lookup((*reltypeArcs)[arc]) << " (" << diffusionFactor(pathToQuery) << ")\"];" << endl;;
                 }
-    
+                
                 nodeCount = traverse(newPair, pathToQuery, nodeCount, scores, depth, touchNodesOnly);
                 pathToQuery.pop_back();
             }
         }
+        
     }
     return nodeCount;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Query processing functions
+// Query priors
 ///////////////////////////////////////////////////////////////////////////////
 
+// query prior - metamap score
 map<string, double> calcMetaMapConfidenceQueryPrior(map<string, double> &queryConceptsWithPriors) {
     map<string, double> priors;
     int confidenceSum = 0;
@@ -773,7 +791,8 @@ map<string, double> calcMetaMapConfidenceQueryPrior(map<string, double> &queryCo
     return queryConceptsWithPriors;
 }
 
-map<string, double> calcDocRatioQueryPrior(map<string, double> &queryConceptsWithPriors) {
+// query prior - doc ratio
+void calcDocRatioQueryPrior(map<string, double> &queryConceptsWithPriors) {
     int docCountSum = 0;
     for (map<string, double>::iterator it = queryConceptsWithPriors.begin(); it != queryConceptsWithPriors.end(); it++) {
         if(idx->term(it->first) > 0 ) {
@@ -788,17 +807,36 @@ map<string, double> calcDocRatioQueryPrior(map<string, double> &queryConceptsWit
 
         }
     }
-    
-    return queryConceptsWithPriors;
+}
+
+// query prior - arc count
+void calcArcCountQueryPrior(map<string, double> &queryConceptsWithPriors) {
+    for (map<string, double>::iterator it = queryConceptsWithPriors.begin(); it != queryConceptsWithPriors.end(); it++) {
+        double probQ = 0;
+        if (cuiToNodeId.count(it->first) > 0) {
+            Node node = g->nodeFromId(cuiToNodeId[it->first]);
+            probQ = countNodeArcs(node) / (double) countArcs(*g);
+        } 
+        queryConceptsWithPriors[it->first] = probQ;
+    }
 }
 
 void calcQueryPriors(map<string, double> &queryConceptsWithPriors) {
-    calcMetaMapConfidenceQueryPrior(queryConceptsWithPriors);
+    calcMetaMapConfidenceQueryPrior(queryConceptsWithPriors); // always call this to strip confidence scores (even if they are never used)
     
     if(LocalParameter::docRatioQueryPrior) {
         calcDocRatioQueryPrior(queryConceptsWithPriors);
     }
+    
+    if(LocalParameter::arcCountQueryPrior) {
+        calcArcCountQueryPrior(queryConceptsWithPriors);
+    }
+    
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// Query processing functions
+///////////////////////////////////////////////////////////////////////////////
 
 // process a single query term/concept by locating the node in the graph and initiating traversal from that node
 void processQueryTerm(string query, map<DOCID_T, double> &scores, bool touchNodesOnly, double queryProb)
