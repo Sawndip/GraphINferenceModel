@@ -6,7 +6,7 @@
 
   <index>/export/data/ir.indexes/medtrack/visit_level/snomed/indri-5.1/current</index>
   <query>/Users/bevan/phd/papers/network_based_retrieval_as_inference/retrieval/params/cons-medical-topics101-185-active</query>
-  <resultCount>10000</resultCount>
+  <resultCount>1000</resultCount>
   <stopwordFile>params/stoplist.cons</stopwordFile>
 
 <!-----------------------------------------------------------------------------
@@ -39,12 +39,11 @@
 
 
 <!-----------------------------------------------------------------------------
-  RERANKING
+  RERANKING & JUDGEMENTS
 ------------------------------------------------------------------------------>
 
 <!--   <rerankResultsFile>/Users/bevan/phd/papers/network_based_retrieval_as_inference/retrieval/params/cons-medical-topics101-185-active.params.0.results</rerankResultsFile>
   <rerankCount>1000</rerankCount> -->
-  
 
 
 <!-----------------------------------------------------------------------------
@@ -55,6 +54,7 @@
 <diffusionMix>1</diffusionMix>
 <minDiffusionFactor>-0.3</minDiffusionFactor>
 <maxNodesVisited>-10</maxNodesVisited>
+<dfBackgroundSmoothing>0.9</dfBackgroundSmoothing>
 
 <!-----------------------------------------------------------------------------
   QUERY PRIOR PARAMS

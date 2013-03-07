@@ -33,7 +33,7 @@
 // SQLite access to concept, concept relationships
 #include "../indexer/ConceptRelationships.cpp" 
 #include "report_to_visit_mapper.cpp"
-#include "SnomedConceptLookup.cpp"
+#include "ConceptLookup.cpp"
 
 using namespace lemon;
 using namespace std;
@@ -55,7 +55,7 @@ ListDigraph::NodeMap<string> *nodeToCUIMap;
 ListDigraph::NodeMap<float> *nodeToTopoScoreMap;
 map<string, int> cuiToNodeId;
 ListDigraph::ArcMap<double> *simArcs;
-ListDigraph::ArcMap<int> *reltypeArcs;
+ListDigraph::ArcMap<string> *reltypeArcs;
 map<Node, map<DOCID_T, double> > diffusionFactors;
 
 #include "../indexer/doccosine.cpp"
@@ -84,6 +84,9 @@ map<int, map<TERMID_T, double> > emptyDocScores;
 ofstream *graphViz;
 set<DOCID_T> relevantLvl0Docs;
 
+// keep track how many nodes have contributed to a documents score
+map<DOCID_T, int> docNodeCount;
+
 ///////////////////////////////////////////////////////////////////////////////
 // Retrieve parameters
 ///////////////////////////////////////////////////////////////////////////////
@@ -106,6 +109,7 @@ namespace LocalParameter {
     int diffusionOn; // use a diffusion factor (i.e. on) or just set it to 1 (i.e. off)
     double minDiffusionFactor; // alternative to depth setting were we keep traversing while DF is less than this value
     int maxNodesVisited; // keep traversing until visit this number of nodes
+    double dfBackgroundSmoothing; // for calculating the diffusion factor (i.e., edge weight), gives the background weight
     
     int metamapConfidenceOn; // use metamap confidence score as P(Q) for P(D|Q) = P(Q|D)*P(D) / P(Q)
     int docRatioQueryPrior; // use the number of documents containg the query term as a P(Q)
@@ -139,6 +143,7 @@ namespace LocalParameter {
         diffusionOn                 = ParamGetInt("diffusionOn", 1);
         minDiffusionFactor          = ParamGetDouble("minDiffusionFactor", -0.1);
         maxNodesVisited             = ParamGetInt("maxNodesVisited", -1);
+        dfBackgroundSmoothing       = ParamGetDouble("dfBackgroundSmoothing", 0.9);
         
         metamapConfidenceOn         = ParamGetInt("metamapConfidenceOn", 0);
         docRatioQueryPrior          = ParamGetInt("docRatioQueryPrior", 0);
@@ -288,7 +293,7 @@ double LM_Dirichlet_Background(TERMID_T termId, int docLength, double qProb) {
     double denominator = (double)LocalParameter::LMdirichlet_mu + docLength;
     
     
-    //cout << "LMB: " << numerator << " / " << denominator << " / " << collection_MLE(termId) << " = " << (numerator / denominator) / collection_MLE(termId);
+    //cout << "LMB: " << numerator << " / " << denominator << " / " << qProb << " = " << (numerator / denominator) / qProb;
     
     return (numerator / denominator);
     
@@ -389,7 +394,6 @@ double query_sim(Node node, vector<string> queryConcepts)
 double diffusionFactor(vector<Arc> pathToQuery)
 {
     double total_df = 1;
-    double bkgndSmooth = 0.9;
     
     //cout << "calculate df " << endl;
     
@@ -405,14 +409,14 @@ double diffusionFactor(vector<Arc> pathToQuery)
             double sim_weight = (*simArcs)[arc];
             
             // the relationship type weigth
-            int reltype = (*reltypeArcs)[arc];
+            string reltype = (*reltypeArcs)[arc];
 
             
             double rel_weight;
             if(relweightsweep > 0) {
-                rel_weight = snomedRelationshipTypeWeight(int_to_str(reltype), "../snomed_relations/reltypes.txt."+double_to_str(relweightsweep));
+                rel_weight = snomedRelationshipTypeWeight(reltype, "../snomed_relations/reltypes.txt."+double_to_str(relweightsweep));
             } else {
-                rel_weight = snomedRelationshipTypeWeight(int_to_str(reltype));
+                rel_weight = relationshipTypeWeight(reltype, (*nodeToCUIMap)[source].substr(0,1) == "c" || (*nodeToCUIMap)[source].substr(0,1) == "C");
             }
             
             // combined weight - the df
@@ -423,17 +427,15 @@ double diffusionFactor(vector<Arc> pathToQuery)
             
             
             
-            VLOG(2) << "diffusion Factor for arc " << (*nodeToCUIMap)[source] << " -> " << (*nodeToCUIMap)[target] << ": avg(" << sim_weight << "," << reltype << "=" << rel_weight << ") =" << df;
+            //VLOG(2) << "diffusion Factor for arc " << (*nodeToCUIMap)[source] << " -> " << (*nodeToCUIMap)[target] << ": avg(" << sim_weight << "," << reltype << "=" << rel_weight << ") =" << df;
             
             total_df = total_df * df;
         }
         
         // smooth
         
-        total_df = bkgndSmooth*total_df + (1-bkgndSmooth)*1;
-    } else {
-        cout << "DF off" << endl;
-    }
+        total_df = LocalParameter::dfBackgroundSmoothing*total_df + (1-LocalParameter::dfBackgroundSmoothing);
+    } 
     
     return total_df;
 }
@@ -461,26 +463,6 @@ double lengthNormalisedEmptyDocScore(int depth, TERMID_T termId, int docLength, 
 // Comparison against qrels
 ///////////////////////////////////////////////////////////////////////////////
 
-// isJudged checks if the doc id is contain in the qrels
-// Remember, judged docs are either 2 (very relevant), 1 (relevant) and 0 (irrelevant).
-// This method can be used to give and idea of the effect of unjudged documents on retrieval performance.
-map<int, string> judged;
-bool isJudged(int docId)
-{
-    if(judged.size() == 0)
-    {
-        ifstream file("../judged.txt");
-        string line;
-        while(getline(file, line))
-        {
-            judged[idx->document(line)] = line;
-            cout << idx->document(line) << " " << judged[idx->document(line)] << endl;
-        }
-        file.close();
-    }
-    
-    return (judged.count(docId) > 0);
-}
 
 map<int, vector<DOCID_T> > qrels; // queryId -> [docId, ..]
 int currentQueryId;
@@ -583,6 +565,7 @@ void scoreNode(pair<Node, double> &nodePair, vector<Arc> &pathToQuery, map<DOCID
     while (docInfoList->hasMore())
     {
         DocInfo *doc = docInfoList->nextEntry();
+        
         VLOG(2) << "Scoring document: " << idx->document(doc->docID()) << " (id=" << doc->docID() << ") against query " << (*nodeToCUIMap)[node] << " ";
         
         // MEDTRACK 2012 FILTER
@@ -677,7 +660,7 @@ void scoreNode(pair<Node, double> &nodePair, vector<Arc> &pathToQuery, map<DOCID
     
     VLOG(1) << "complete hn: " << (*nodeToCUIMap)[node] << " lvl: " << pathToQuery.size() << " #docs:" << idx->docCount(termId) << " (" << relevantDocCount << " relevant)" << endl;
     
-    *graphViz << "\t" << (*nodeToCUIMap)[node] << " [label=\"" << concept_lookup(atoi((*nodeToCUIMap)[node].c_str())) << " (" << newRelevantDocCount << "/" << relevantDocCount << ") #" << idx->docCount(termId) << "\"";
+    *graphViz << "\t" << (*nodeToCUIMap)[node] << " [label=\"" << concept_lookup((*nodeToCUIMap)[node].c_str()) << " (" << newRelevantDocCount << "/" << relevantDocCount << ") #" << idx->docCount(termId) << "\"";
     if(pathToQuery.size() == 0) {
         *graphViz << ", color=red";
     }
@@ -689,17 +672,9 @@ void scoreNode(pair<Node, double> &nodePair, vector<Arc> &pathToQuery, map<DOCID
 // recursive traversal of the graph
 int traverse(pair<Node, double> &node, vector<Arc> &pathToQuery, int nodeCount, map<DOCID_T, double> &scores, int &depth, bool touchNodesOnly) {
 
-   
-    
     TERMID_T termId = idx->term((*nodeToCUIMap)[node.first]);
-    // avoid cycles
-    for (vector<Arc>::iterator it = pathToQuery.begin(); it != pathToQuery.end(); it++)
-    {
-        if (g->target(*it) == node.first) {
-            //cout << "loop found: node:" << (*nodeToCUIMap)[node] << " arc " << (*nodeToCUIMap)[g->source(*it)] << " -> " << (*nodeToCUIMap)[g->target(*it)] << endl;
-            return 0;
-        }
-    }
+
+    
     
     
     bool continueTraverse = true;
@@ -721,10 +696,20 @@ int traverse(pair<Node, double> &node, vector<Arc> &pathToQuery, int nodeCount, 
     // stopword? skip
     if(stopwordList.find((*nodeToCUIMap)[node.first]) != stopwordList.end())
         continueTraverse = false;
+    
+    // avoid cycles
+    for (vector<Arc>::iterator it = pathToQuery.begin(); it != pathToQuery.end(); it++)
+    {
+        if (g->target(*it) == node.first) {
+            //cout << "loop found: node:" << (*nodeToCUIMap)[node.first] << " arc " << (*nodeToCUIMap)[g->source(*it)] << " -> " << (*nodeToCUIMap)[g->target(*it)] << endl;
+            continueTraverse = false;
+        }
+    }
         
     if(continueTraverse)
     {
-        VLOG(2) << "calling traverse on " << (*nodeToCUIMap)[node.first] << endl;
+        
+        VLOG_IF(2, !touchNodesOnly) << "calling traverse on " << (*nodeToCUIMap)[node.first] << endl;
         
         // score all the docs attached to this node
         if(touchNodesOnly) {
@@ -745,13 +730,20 @@ int traverse(pair<Node, double> &node, vector<Arc> &pathToQuery, int nodeCount, 
                 pathToQuery.push_back(arc);
                 pair<Node, double> newPair (g->source(arc), node.second);
                 
-                VLOG(1) << " arc: " << (*nodeToCUIMap)[g->source(arc)] << " -> " << (*nodeToCUIMap)[g->target(arc)] << " lvl:" << pathToQuery.size()+1 << "-" << pathToQuery.size() << " df:" << diffusionFactor(pathToQuery);
+                VLOG_IF(1, !touchNodesOnly) << " arc: " << (*nodeToCUIMap)[g->source(arc)] << " -> " << (*nodeToCUIMap)[g->target(arc)] << " lvl:" << pathToQuery.size() << "-" << pathToQuery.size()-1 << " df:" << diffusionFactor(pathToQuery);
                 
                 if(!touchNodesOnly && pathToQuery.size() <= depth) {
-                    *graphViz << "\t" << (*nodeToCUIMap)[g->source(arc)] << " -> " << (*nodeToCUIMap)[g->target(arc)] << " [label=\"" << concept_lookup((*reltypeArcs)[arc]) << " (" << diffusionFactor(pathToQuery) << ")\"];" << endl;;
+                    string reltype = (*reltypeArcs)[arc];
+                    if(isdigit(reltype[0])) {
+                        reltype = concept_lookup((*reltypeArcs)[arc]);
+                    }
+                    *graphViz << "\t" << (*nodeToCUIMap)[g->source(arc)] << " -> " << (*nodeToCUIMap)[g->target(arc)] << " [label=\"" << reltype << " (" << diffusionFactor(pathToQuery) << ")\"];" << endl;;
                 }
                 
-                nodeCount = traverse(newPair, pathToQuery, nodeCount, scores, depth, touchNodesOnly);
+//                if ( (*reltypeArcs)[arc] == 116680003 ) {
+                    nodeCount = traverse(newPair, pathToQuery, nodeCount, scores, depth, touchNodesOnly);
+//                }
+                
                 pathToQuery.pop_back();
             }
         }
@@ -805,8 +797,8 @@ void calcDocRatioQueryPrior(map<string, double> &queryConceptsWithPriors) {
     for (map<string, double>::iterator it = queryConceptsWithPriors.begin(); it != queryConceptsWithPriors.end(); it++) {
         if(idx->term(it->first) > 0 ) {
             VLOG(2) << "calculating doc ratio query prior P(" << it->first << ") = " << it->second << "/" << docCountSum << "=" << it->second / (double)docCountSum << endl;
-            queryConceptsWithPriors[it->first] = it->second / (double)docCountSum;
-
+            //queryConceptsWithPriors[it->first] = (it->second / (double)docCountSum);
+            queryConceptsWithPriors[it->first] = it->second / idx->docCount();
         }
     }
 }
@@ -874,7 +866,7 @@ void processQueryTerm(string query, map<DOCID_T, double> &scores, bool touchNode
             cout << " [not found in index]" << " ";
         }
     } else if(!touchNodesOnly) {
-        cout << " [not present in graph, ignoring]" << " ";
+        cout << "(x)" << " ";
     }
 }
 
@@ -898,6 +890,8 @@ void processQuery(Document *qryDoc, ResultFile &resultFile)
     // used only for debug / statistics
     lvl0Scores.clear();
     lvl1Scores.clear();
+    
+    docNodeCount.clear();
     
     
     // build up the query vector
@@ -941,7 +935,7 @@ void processQuery(Document *qryDoc, ResultFile &resultFile)
         for (map<DOCID_T, double>::iterator it=scores.begin(); it!=scores.end(); it++) {
             int queryLen = queryConceptsWithPriors.size();
             queryLen = 1;
-            results.PushValue(it->first, it->second / queryLen);                
+            results.PushValue(it->first, it->second);                
         }
     } else {    // do reranking
         results = *rerankResults;
@@ -997,9 +991,7 @@ void printParams()
     cout << "Running retrieval: ";
 
     cout << "weighting: " << LocalParameter::weightScheme << " ";
-    //cout << "dampener: " << related_dampener << " ";
-    //cout << "semtype boost: " << semantic_type_weight_booster << " ";
-    //cout << "smoothing: " << s << " ";
+
     if (LocalParameter::weightScheme == "LM-JM")
     {
         cout << "lambda=" << LocalParameter::LMjm_lambda;
@@ -1018,6 +1010,10 @@ void printParams()
     
     if(relweightsweep > 0) {
         cout << " relweightsweep: " << relweightsweep;
+    }
+    
+    if(!LocalParameter::diffusionOn) {
+        cout << " diffusionFactor: OFF!! ";
     }
     
     if(LocalParameter::depth >= 0) {
@@ -1067,9 +1063,8 @@ void AppMain(int argc, char *argv[])
     nodeToTopoScoreMap = &theNodeToTopoScoreMap;
     ListDigraph::ArcMap<double> theSimArcs(*g);
     simArcs = &theSimArcs;
-    ListDigraph::ArcMap<int> theRelTypeArcs(*g);
+    ListDigraph::ArcMap<string> theRelTypeArcs(*g);
     reltypeArcs = &theRelTypeArcs;
-    
     
     cout << "Loading graph..." << flush;
     digraphReader(*g, LocalParameter::indexPath+"/graph-active.lgf").nodeMap("Concepts", *nodeToCUIMap).nodeMap("TopoScore", *nodeToTopoScoreMap).arcMap("SimArcWeights", *simArcs).arcMap("RelTypeArc", *reltypeArcs).run();

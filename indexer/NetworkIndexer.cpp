@@ -38,7 +38,7 @@ ListDigraph *g;
 ListDigraph::NodeMap<CUI> *nodeToCUIMap;
 ListDigraph::NodeMap<float> *nodeToTopoScoreMap;
 ListDigraph::ArcMap<double> *simArcs;
-ListDigraph::ArcMap<int> *reltypeArcs;
+ListDigraph::ArcMap<string> *reltypeArcs;
 map<CUI, nodeid> cuiToNodeIdMap;
 
 // Similarity measures
@@ -114,7 +114,7 @@ float reltype_weight_snomed(Node source, Node target, string reltype) {
 
 float reltype_weight(Node source, Node target, string reltype) {
     float the_reltype_weight;
-    if((*nodeToCUIMap)[source].substr(0,1) == "C") // UMLS
+    if((*nodeToCUIMap)[source].substr(0,1) == "C" || (*nodeToCUIMap)[source].substr(0,1) == "c") // UMLS
     {
         the_reltype_weight = reltype_weight_umls(source, target, reltype);
     }
@@ -163,7 +163,7 @@ void addEdgesToRelatedNodes(Node &node, bool inEdge)
     VLOG(2) << "looking for edges for " << (*nodeToCUIMap)[node];
     
     // for each related concept (from UMLS)
-    vector< vector<string> > relatedConcepts = findRelatedConceptsSQL((*nodeToCUIMap)[node], inEdge);
+    vector< vector<string> > relatedConcepts = findRelatedConcepts((*nodeToCUIMap)[node], inEdge);
     VLOG(2) << "found " << relatedConcepts.size() << " edges ";
     for (vector< vector<string> >::iterator relIter = relatedConcepts.begin();
          relIter != relatedConcepts.end(); relIter++)
@@ -195,6 +195,8 @@ void addEdgesToRelatedNodes(Node &node, bool inEdge)
         // calculate the weight between concept and assing to arc weight
         double sim_weight = semantic_similarity(node,relatedNode,reltype);
         VLOG(2) << sim_weight << endl;
+        
+        //inEdge = (reltype == "116680003");
 
         Arc arc;
         if(inEdge) {
@@ -204,7 +206,7 @@ void addEdgesToRelatedNodes(Node &node, bool inEdge)
         }
 
         (*simArcs)[arc] = sim_weight;
-        (*reltypeArcs)[arc] = atoi(reltype.c_str());
+        (*reltypeArcs)[arc] = reltype.c_str();
     }
     
     VLOG(2) << "finished adding edges to " << (*nodeToCUIMap)[node] << endl;
@@ -220,15 +222,15 @@ void createGraphNodesIndex()
     {
         cout << "Building network nodes:\t" << (int)((++count / (float)total)*100) << "%\r" << flush;
         
-        //cout << termId << " (" << idx->term(termId) << ") " << idx->docCount(termId) << " docs" << endl ;
+        string cui = idx->term(termId);
+        std::transform(cui.begin(), cui.end(), cui.begin(), ::tolower);
         
         // create the concept node
         ListDigraph::Node node = g->addNode();
-        cuiToNodeIdMap[idx->term(termId)] = g->id(node);
-        (*nodeToCUIMap)[node] = idx->term(termId);
+        cuiToNodeIdMap[cui] = g->id(node);
+        (*nodeToCUIMap)[node] = cui;
         (*nodeToTopoScoreMap)[node] = idf((*nodeToCUIMap)[node]);
 
-         
     }
 
     cout << endl << flush;
@@ -269,9 +271,8 @@ void createGraphEdges()
     for (ListDigraph::NodeIt node(*g); node != INVALID; ++node)
     {
         cout << "Building network edges:\t" << (int)((++nodeCount / (float)nodeTotal)*100) << "%\r" << flush;
-        VLOG(2) << "edge " << nodeCount << " / " << nodeTotal << endl;
         addEdgesToRelatedNodes(node, true);  // rn -> n
-        //addEdgesToRelatedNodes(node, false); // n -> rn
+//        addEdgesToRelatedNodes(node, false); // n -> rn
     }
     cout << endl;
 
@@ -339,14 +340,16 @@ void NetworkIndexer(string indexLoc, string conceptRelationshipDB)
     nodeToTopoScoreMap = &theNodeToTopoScoreMap;
     ListDigraph::ArcMap<double> theSimArcs(*g);
     simArcs = &theSimArcs;
-    ListDigraph::ArcMap<int> theRelTypeArcs(*g);
+    ListDigraph::ArcMap<string> theRelTypeArcs(*g);
     reltypeArcs = &theRelTypeArcs;
+    
+    cout <<"Building Graph for index: " << indexLoc << ", relationshipDB: " << conceptRelationshipDB << endl;
     
     prepareDB(conceptRelationshipDB);
         
     createGraphNodesIndex();
-    createGraphEdges();
-    calcTopoScore();
+    createGraphEdges();    
+    //calcTopoScore();
     
     cout << "Graph complete: " << countNodes(*g) << " nodes; " << countArcs(*g) << " edges." << endl;
     

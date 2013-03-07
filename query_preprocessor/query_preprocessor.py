@@ -20,7 +20,7 @@ def getNameAndSemanticType(scui):
 	(name, type) = scui_desc_regex.findall(desc)[0] 
 	return (name.strip(), type)
 
-def callMetaMap(txt, extendedFormat):
+def callMetaMap(txt, extendedFormat, includeMetaMapConfidence, umlsFormat):
 	cmd = 'echo %s | metamap11v2 -I -R SNOMEDCT -y' % txt
 	output = commands.getoutput(cmd)
 	
@@ -72,20 +72,29 @@ def callMetaMap(txt, extendedFormat):
 			for (score, sense) in phrases[p]:
 				for concept in sense:
 					
-					scuis = mapper.to_snomed(concept[3])
-					if scuis != None:
-						for scui in scuis.split():
-							print "%s_%s" % (scui, concept[0]),
+					# print the umls concept
+					if umlsFormat:
+						print concept[3],
+					else:
+						scuis = mapper.to_snomed(concept[3])
+						if scuis != None:
+							for scui in scuis.split():
+								if includeMetaMapConfidence:
+									print "%s_%s" % (scui, concept[0]),
+								else:
+									print scui,
 		print ""
 
-def handleQuery(id, txt, extendedFormat=False):
-	callMetaMap(txt, extendedFormat)
+def handleQuery(id, txt, extendedFormat=False, includeMetaMapConfidence=False, umlsFormat=False):
+	callMetaMap(txt, extendedFormat, includeMetaMapConfidence, umlsFormat)
 
 if __name__ == "__main__":
 	''' Main methods '''
 	parser = argparse.ArgumentParser(description="Converts an Indri style query file into an extended SNOMED CT query")
 	parser.add_argument("iq_file")
 	parser.add_argument('-e', action='store_true', help="Print out in extended format")
+	parser.add_argument('-c', action='store_true', help="Include metamap confidence")
+	parser.add_argument('-u', action='store_true', help="Output in UMLS format")
 
 	queries = IQReader(parser.parse_args().iq_file).get_queries()
 	print '<parameters>'
@@ -93,7 +102,7 @@ if __name__ == "__main__":
 		print '\t<query>'
 		print '\t\t<number>%s</number>' % qid
 		print '\t\t<text>'
-		handleQuery(qid, txt.strip(), parser.parse_args().e)
+		handleQuery(qid, txt.strip(), parser.parse_args().e, parser.parse_args().c, parser.parse_args().u)
 		print '\t\t</text>'
 		print '\t</query>'
 	print '</parameters>'

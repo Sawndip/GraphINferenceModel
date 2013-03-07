@@ -30,10 +30,13 @@ void closeDB()
     sqlite3_close(database);
 }
 
+
 // searches the sqlite DB that contains cui to cui mapping of related concepts
 // read each from sql
-vector< vector<string> > findRelatedConceptsSQL(const string &cui, bool inEdge)
+vector< vector<string> > findRelatedConceptsSQL(string &cui, bool inEdge)
 {
+    
+    std::transform(cui.begin(), cui.end(),cui.begin(), ::tolower);
     
     std::vector< vector<string> > relatedConcepts;
     
@@ -41,25 +44,34 @@ vector< vector<string> > findRelatedConceptsSQL(const string &cui, bool inEdge)
     sqlite3_stmt *statement;
 
     string query = " and (relcharacteristic=0 or relcharacteristic=3);";
-    if (inEdge) {
+    if (inEdge) { // rn -> n
         query = "SELECT cui1, reltype FROM crel where cui2 = '"+cui+"'" + query;
-    } else {
+    } else { // n -> rn
         query = "SELECT cui2, reltype FROM crel where cui1 = '"+cui+"'" + query;     
     }
 
     
-    query = "SELECT cui2, reltype FROM crel where cui1 = '"+cui+"' and (relcharacteristic=0 or relcharacteristic=3);";
-
+    query = "SELECT cui2, reltype FROM crel where cui1 = '"+cui+"';"; 
+//    query = "SELECT cui1, reltype FROM crel where cui2 = '"+cui+"' and reltype=116680003 ;"; 
+    
+    if(cui.substr(0,1) != "c") // SNOMED
+    {
+        query = query + " and (relcharacteristic=0 or relcharacteristic=3);";
+    }
+    
+    
     if (sqlite3_prepare_v2(database, query.c_str(), -1, &statement, 0) == SQLITE_OK)
     {
+        
         int cols = sqlite3_column_count(statement);
         int result = 0;
         while (true)
         {
             result = sqlite3_step(statement);
-
+            
             if (result == SQLITE_ROW)
             {
+            
                 vector<string> relationship;
                 for (int col = 0; col < cols; col++)
                 {
@@ -97,6 +109,7 @@ vector< vector<string> > findRelatedConceptsCache(const string &cui)
         {
 
             int result = 0;
+            int count = 0;
             while (true)
             {
                 result = sqlite3_step(statement);
@@ -122,6 +135,8 @@ vector< vector<string> > findRelatedConceptsCache(const string &cui)
                 {
                     break;
                 }
+                
+                VLOG_IF(2, count % 10000 == 0) << count++ << endl;
             }
             
             sqlite3_finalize(statement);
@@ -167,6 +182,11 @@ vector<string> getAllConcepts()
     
     return concepts;
 
+}
+
+vector< vector<string> > findRelatedConcepts(string &cui, bool inEdge)
+{
+    return findRelatedConceptsSQL(cui, inEdge);
 }
 
 
@@ -216,6 +236,19 @@ double snomedRelationshipTypeWeight(string reltype, string relWeightsFile)
 double snomedRelationshipTypeWeight(string reltype) {
     return snomedRelationshipTypeWeight(reltype, "../snomed_relations/reltypes.txt");
 }
+
+double umlsRelationshipTypeWeight(string reltype) {
+    return 1.0;
+}
+
+double relationshipTypeWeight(string reltype, bool umls) {
+    if (umls) {
+        return umlsRelationshipTypeWeight(reltype);
+    } else {
+        return snomedRelationshipTypeWeight(reltype);
+    }
+}
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // SNOMED concept Semantic Types 
@@ -267,6 +300,4 @@ float semanticType_weight_snomed(string sourceCUI, string targetCUI, float weigh
 ///////////////////////////////////////////////////////////////////////////////
 // END
 ///////////////////////////////////////////////////////////////////////////////
-
-
 
