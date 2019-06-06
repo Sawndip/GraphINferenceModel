@@ -60,6 +60,7 @@ string umls_concept_lookup(string cui) {
 }
 
 string concept_lookup(string cui) {
+    
     if(cui == "0") 
         return cui;
     

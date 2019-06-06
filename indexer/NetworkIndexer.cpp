@@ -217,6 +217,7 @@ void createGraphNodesIndex()
 {
     // cycle through each unique concept in the index
     int total = idx->termCountUnique();
+    cout << total << endl;
     int  count = 0;
     for (int termId = 1; termId <= total; termId++)
     {

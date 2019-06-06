@@ -120,8 +120,9 @@ namespace LocalParameter {
     
     std::string rerankResultsFile; // path to a TREC results file to use for reranking
     int rerankCount; // number of top docs to rerank
+    int onlyJudgedDocuments; // filter the retrieval results to include only document judged according to qrels
     
-    string graphVizFile; // generate a graphViz graph for debugging and evaluation purposes. 
+    string graphVizDir; // generate a graphViz graph for debugging and evaluation purposes. 
     
     void get() {
         // the string with quotes are the actual variable names to use for specifying the parameters
@@ -154,8 +155,9 @@ namespace LocalParameter {
         
         rerankResultsFile           = ParamGetString("rerankResultsFile");
         rerankCount                 = ParamGetInt("rerankCount", 10);
+        onlyJudgedDocuments         = ParamGetInt("onlyJudgedDocuments", 0);
         
-        graphVizFile                = ParamGetString("graphVizFile");
+        graphVizDir                = ParamGetString("graphVizDir");
     }
 };
 
@@ -429,12 +431,13 @@ double diffusionFactor(vector<Arc> pathToQuery)
             
             //VLOG(2) << "diffusion Factor for arc " << (*nodeToCUIMap)[source] << " -> " << (*nodeToCUIMap)[target] << ": avg(" << sim_weight << "," << reltype << "=" << rel_weight << ") =" << df;
             
+            // df constanst background smoothing to deal with when df = 0.
+            df = LocalParameter::dfBackgroundSmoothing*df + (1-LocalParameter::dfBackgroundSmoothing);
             total_df = total_df * df;
         }
         
         // smooth
-        
-        total_df = LocalParameter::dfBackgroundSmoothing*total_df + (1-LocalParameter::dfBackgroundSmoothing);
+        //total_df = LocalParameter::dfBackgroundSmoothing*total_df + (1-LocalParameter::dfBackgroundSmoothing);
     } 
     
     return total_df;
@@ -463,11 +466,10 @@ double lengthNormalisedEmptyDocScore(int depth, TERMID_T termId, int docLength, 
 // Comparison against qrels
 ///////////////////////////////////////////////////////////////////////////////
 
+map<int, map<DOCID_T, int> > relevanceJudgements;
+int relevanceJudgement(int queryId, DOCID_T docId) {
 
-map<int, vector<DOCID_T> > qrels; // queryId -> [docId, ..]
-int currentQueryId;
-bool isRelevantDoc(int queryId, DOCID_T docId) {
-    if(qrels.size() == 0) {
+    if(relevanceJudgements.size() == 0) {
         ifstream file("params/medtrack-all.qrel"); // e.g. 101 0 corpus/+C3SPIppTQGH 0
         string line;
         while(getline(file, line))
@@ -484,30 +486,36 @@ bool isRelevantDoc(int queryId, DOCID_T docId) {
             getline(linestream, relevance, ' ');
             
             int qId = string_to_int(qIdStr);
+            
+            
             DOCID_T docId = idx->document(docName);
             
-//            cout << line << endl;
-//            cout << qId << " " << zero << " " << docName << " " << relevance << " :" << docId << endl;
-//            
-            if(relevance == "0") continue;
-            
-            vector<DOCID_T> docIds;
-            if(qrels.count(qId)) {
-                docIds = qrels[qId];
-//                cout << "previous size is " << docIds.size() << endl;
+            map<DOCID_T, int> docIds;
+            if(relevanceJudgements.count(qId)) {
+                docIds = relevanceJudgements[qId];
             }
-            docIds.push_back(docId);
-            qrels[qId] = docIds;
+            docIds[docId] = string_to_int(relevance);
+            relevanceJudgements[qId] = docIds;
+            
         }
         file.close();
         
-//        cout << "FINISHED QRELS 154=" << qrels[154].size() << endl;
     }
     
-    bool isRel = std::find ( qrels[queryId].begin(), qrels[queryId].end(), docId ) != qrels[queryId].end();
-    //VLOG(2) << "query " << queryId << " contains " << qrels[queryId].size() << " relevant documents " << idx->document(docId) << " " << isRel << endl;
-    return isRel;
+    int relevance = -1;
+    if(relevanceJudgements.count(queryId) > 0 && relevanceJudgements[queryId].count(docId) > 0) {
+        relevance = relevanceJudgements[queryId][docId];
+    }
     
+    
+    return relevance;
+}
+
+
+
+int currentQueryId;
+bool isRelevantDoc(int queryId, DOCID_T docId) {
+    return relevanceJudgement(queryId, docId) > 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -566,6 +574,10 @@ void scoreNode(pair<Node, double> &nodePair, vector<Arc> &pathToQuery, map<DOCID
     {
         DocInfo *doc = docInfoList->nextEntry();
         
+        if (LocalParameter::onlyJudgedDocuments && relevanceJudgement(currentQueryId, doc->docID()) < 0) {
+            continue;
+        }
+                
         VLOG(2) << "Scoring document: " << idx->document(doc->docID()) << " (id=" << doc->docID() << ") against query " << (*nodeToCUIMap)[node] << " ";
         
         // MEDTRACK 2012 FILTER
@@ -660,11 +672,14 @@ void scoreNode(pair<Node, double> &nodePair, vector<Arc> &pathToQuery, map<DOCID
     
     VLOG(1) << "complete hn: " << (*nodeToCUIMap)[node] << " lvl: " << pathToQuery.size() << " #docs:" << idx->docCount(termId) << " (" << relevantDocCount << " relevant)" << endl;
     
-    *graphViz << "\t" << (*nodeToCUIMap)[node] << " [label=\"" << concept_lookup((*nodeToCUIMap)[node].c_str()) << " (" << newRelevantDocCount << "/" << relevantDocCount << ") #" << idx->docCount(termId) << "\"";
-    if(pathToQuery.size() == 0) {
-        *graphViz << ", color=red";
+    if(LocalParameter::graphVizDir.length() > 0) {
+    
+        *graphViz << "\t" << (*nodeToCUIMap)[node] << " [label=\"" << concept_lookup((*nodeToCUIMap)[node].c_str()) << " (" << newRelevantDocCount << "/" << relevantDocCount << ") #" << idx->docCount(termId) << "\"";
+        if(pathToQuery.size() == 0) {
+            *graphViz << ", color=red";
+        }
+        *graphViz << "];" << endl;
     }
-    *graphViz << "];" << endl;
     
     delete docInfoList;
 } 
@@ -705,6 +720,8 @@ int traverse(pair<Node, double> &node, vector<Arc> &pathToQuery, int nodeCount, 
             continueTraverse = false;
         }
     }
+
+
         
     if(continueTraverse)
     {
@@ -722,6 +739,7 @@ int traverse(pair<Node, double> &node, vector<Arc> &pathToQuery, int nodeCount, 
             scoreNode(node, pathToQuery, scores, pathToQuery.size());
         }
         nodeCount++;
+    
         
         // follow children of this node
         for (ListDigraph::InArcIt arc(*g, node.first); arc != INVALID; ++arc)
@@ -734,15 +752,19 @@ int traverse(pair<Node, double> &node, vector<Arc> &pathToQuery, int nodeCount, 
                 
                 if(!touchNodesOnly && pathToQuery.size() <= depth) {
                     string reltype = (*reltypeArcs)[arc];
-                    if(isdigit(reltype[0])) {
-                        reltype = concept_lookup((*reltypeArcs)[arc]);
+                    
+                    
+                    if (LocalParameter::graphVizDir.length() > 0) {
+                        if(isdigit(reltype[0])) {
+                            reltype = concept_lookup((*reltypeArcs)[arc]);
+                        }
+                        *graphViz << "\t" << (*nodeToCUIMap)[g->source(arc)] << " -> " << (*nodeToCUIMap)[g->target(arc)] << " [label=\"" << reltype << " (" << diffusionFactor(pathToQuery) << ")\"];" << endl;
                     }
-                    *graphViz << "\t" << (*nodeToCUIMap)[g->source(arc)] << " -> " << (*nodeToCUIMap)[g->target(arc)] << " [label=\"" << reltype << " (" << diffusionFactor(pathToQuery) << ")\"];" << endl;;
                 }
                 
-//                if ( (*reltypeArcs)[arc] == 116680003 ) {
+                //if ( (*reltypeArcs)[arc] != "116680003" ) {
                     nodeCount = traverse(newPair, pathToQuery, nodeCount, scores, depth, touchNodesOnly);
-//                }
+                //}
                 
                 pathToQuery.pop_back();
             }
@@ -815,6 +837,7 @@ void calcArcCountQueryPrior(map<string, double> &queryConceptsWithPriors) {
     }
 }
 
+// apply the varies query priors
 void calcQueryPriors(map<string, double> &queryConceptsWithPriors) {
     calcMetaMapConfidenceQueryPrior(queryConceptsWithPriors); // always call this to strip confidence scores (even if they are never used)
     
@@ -876,11 +899,21 @@ void processQuery(Document *qryDoc, ResultFile &resultFile)
     const char *queryID = qryDoc->getID();
     currentQueryId = atoi(queryID);
     cout << "Running query: "<< queryID << "\n\t";
-    
-    ofstream theGraphviz(("/Users/bevan/tmp/query_viz/"+int_to_str(currentQueryId)+".dot").c_str());
+
+
+    string graphVizLoc = "/dev/null";
+    if(LocalParameter::graphVizDir.length() > 0) {
+        graphVizLoc = (LocalParameter::graphVizDir+"/"+int_to_str(currentQueryId)+".dot").c_str();    
+    } 
+
+    ofstream theGraphviz( graphVizLoc.c_str() );
     graphViz = &theGraphviz;
+
     *graphViz << "digraph " << currentQueryId << " {" << endl;
-        *graphViz << "label=\"" << currentQueryId << "\"" << endl;
+    *graphViz << "label=\"" << currentQueryId << "\"" << endl;
+
+
+    //*graphViz << "testing" << endl;
     
     // rerank another results file
     if(LocalParameter::rerankResultsFile.length() > 0) {
@@ -893,7 +926,8 @@ void processQuery(Document *qryDoc, ResultFile &resultFile)
     
     docNodeCount.clear();
     
-    
+
+
     // build up the query vector
     //vector<string> queryConcepts;
     map<string, double> queryConceptsWithPriors;
@@ -909,7 +943,7 @@ void processQuery(Document *qryDoc, ResultFile &resultFile)
     map<DOCID_T, double> scores;
     
     calcQueryPriors(queryConceptsWithPriors);
-    
+
     
     if(LocalParameter::weightScheme == "LM-Dirichlet") {
         // VISIT ALL THE NODES TO PRECOMPUTE THE EMPTY DOCUMENT SCORE
@@ -926,7 +960,7 @@ void processQuery(Document *qryDoc, ResultFile &resultFile)
     }
     
     cout << endl;
-    
+
     // print results    
     IndexedRealVector results(idx->docCount());
     results.clear();
@@ -951,10 +985,11 @@ void processQuery(Document *qryDoc, ResultFile &resultFile)
     resultFile.writeResults(qryDoc->getID(), &results, LocalParameter::resultCount);
     
     //printDebugScores(queryId)
-    
+
+    if(LocalParameter::graphVizDir.length() > 0) {
         *graphViz << "}" << endl;
-    graphViz->close();
-    
+        graphViz->close();
+    }
 }
 
 // print the debug query results
@@ -1012,14 +1047,23 @@ void printParams()
         cout << " relweightsweep: " << relweightsweep;
     }
     
-    if(!LocalParameter::diffusionOn) {
-        cout << " diffusionFactor: OFF!! ";
-    }
-    
     if(LocalParameter::depth >= 0) {
         cout << " depth: " << LocalParameter::depth;
     }
     
+    cout << endl;
+    
+    if(!LocalParameter::diffusionOn) {
+        cout << "WARNING: diffusionFactor: OFF!! ";
+    }
+    
+    if(LocalParameter::onlyJudgedDocuments) {
+        cout << "WARNING: onlyJudgedDocuments: ON!! ";
+    }
+    
+    if(LocalParameter::graphVizDir.length() > 0) {
+        cout << "GraphViz: " << LocalParameter::graphVizDir << " ";
+    }
     cout << endl;
 }
 

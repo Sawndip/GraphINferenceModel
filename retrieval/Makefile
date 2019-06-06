@@ -4,8 +4,8 @@
 %: %.o
 	$(CXX) $(CXXFLAGS) -pg -o $@ $< $(CPPLDFLAGS)
 
-lemur = ${HOME}/tools/lemur-4.12
-lemon = ${HOME}/tools/lemon-1.2.3
+lemur = ${HOME}/tools/lemur-git
+lemon = /usr/local/include/lemon
 tinyxml2 = ${HOME}/tools/tinyxml2
 
 LEMUR_INC = ${lemur}/include

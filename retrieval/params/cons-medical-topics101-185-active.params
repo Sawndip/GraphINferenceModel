@@ -9,6 +9,8 @@
   <resultCount>1000</resultCount>
   <stopwordFile>params/stoplist.cons</stopwordFile>
 
+  <!-- <graphVizDir>/Users/bevan/tmp/graphviz</graphVizDir> -->
+
 <!-----------------------------------------------------------------------------
   WEIGHTING SCHEMES
 ------------------------------------------------------------------------------>
@@ -16,14 +18,14 @@
  <!-- INDRI-TFIDF -->
 <!--   <weightScheme>indri_tfidf</weightScheme>
   <indri_tfidf_k1>5.2</indri_tfidf_k1>
-  <indri_tfidf_b>0.4</indri_tfidf_b> -->
-
+  <indri_tfidf_b>0.4</indri_tfidf_b>
+ -->
 <!-- BM25 -->
 <!-- <weightingScheme>bm25</weightingScheme> -->
 
 <!--  LM-Dirichlet -->
   <weightScheme>LM-Dirichlet</weightScheme>
-  <LM-Dirichlet.mu>40000</LM-Dirichlet.mu>
+  <LM-Dirichlet.mu>22000</LM-Dirichlet.mu>
 
 
 <!--  LM-JM -->
@@ -62,5 +64,10 @@
 <metamapConfidenceOn>0</metamapConfidenceOn>
 <docRatioQueryPrior>0</docRatioQueryPrior>
 <arcCountQueryPrior>0</arcCountQueryPrior>
+
+<!-----------------------------------------------------------------------------
+  FILTER ONLY JUDGED DOCUMENTS
+------------------------------------------------------------------------------>
+<onlyJudgedDocuments>0</onlyJudgedDocuments>
 
 </parameters>
